@@ -23,7 +23,7 @@ Supports **Turkish 🇹🇷** and **English 🇬🇧** — switch languages with
 - **Built-in language switcher** (TR / EN button in the top-right corner)
 
 ### Usage — Ready .exe (recommended)
-1. Download `yt-dlp GUI.exe` from the [Releases](../../releases) page
+1. Download `yt-dlp GUI.exe` from the [Releases]([../../releases](https://github.com/cinarcivan/yt-dlp-gui/releases)) page
 2. Run it — `yt-dlp.exe` is downloaded automatically on first launch
 3. Paste a URL and click **Download**
 
@@ -58,7 +58,7 @@ Requirements: Python 3.8+, pip
 - **Yerleşik dil değiştirici** (sağ üst köşedeki TR / EN butonu)
 
 ### Kullanım — Hazır .exe (önerilen)
-1. [Releases](../../releases) sayfasından `yt-dlp GUI.exe` dosyasını indir
+1. [Releases](https://github.com/cinarcivan/yt-dlp-gui/releases) sayfasından `yt-dlp GUI.exe` dosyasını indir
 2. Çalıştır — ilk açılışta `yt-dlp.exe` otomatik olarak indirilir
 3. URL'yi yapıştır ve **İndir** butonuna bas
 
