@@ -20,6 +20,7 @@ Supports **Turkish 🇹🇷** and **English 🇬🇧** — switch languages with
 - Subtitle, thumbnail and metadata embedding
 - Playlist support
 - **yt-dlp is downloaded automatically** — no manual setup needed
+- **Automatic app update check** on launch via GitHub Releases
 - **Built-in language switcher** (TR / EN button in the top-right corner)
 
 ### Usage — Ready installer (recommended)
@@ -56,6 +57,12 @@ Requirements:
 - pip
 - [Inno Setup](https://jrsoftware.org/isinfo.php) for installer generation
 
+### Publish a new version
+1. Update `APP_VERSION` in `app_version.py`
+2. Commit and push your changes
+3. Create and push a tag like `v1.0.1`
+4. GitHub Actions will build and attach both Windows artifacts to the release
+
 ---
 
 ## 🇹🇷 Türkçe
@@ -67,6 +74,7 @@ Requirements:
 - Altyazı, kapak resmi ve metadata gömme
 - Playlist desteği
 - **yt-dlp otomatik indirilir** — ayrıca kurulum gerekmez
+- **Açılışta otomatik uygulama güncelleme kontrolü** (GitHub Releases üzerinden)
 - **Yerleşik dil değiştirici** (sağ üst köşedeki TR / EN butonu)
 
 ### Kullanım — Hazır installer (önerilen)
@@ -102,6 +110,12 @@ Gereksinimler:
 - Python 3.8+
 - pip
 - Installer üretmek için [Inno Setup](https://jrsoftware.org/isinfo.php)
+
+### Yeni sürüm yayınlama
+1. `app_version.py` içindeki `APP_VERSION` değerini güncelle
+2. Değişiklikleri commit edip push et
+3. `v1.0.1` gibi bir tag oluşturup push et
+4. GitHub Actions hem portable `.exe` hem installer dosyasını release'e ekler
 
 ---
 

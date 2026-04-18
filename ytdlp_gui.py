@@ -13,11 +13,16 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import subprocess
 import threading
+import json
 import os
 import sys
 import shutil
+import tempfile
 import urllib.request
 import urllib.error
+import webbrowser
+
+from app_version import APP_VERSION
 
 # ─── Color Palette ───────────────────────────────────────────────────────────
 BG       = "#0f0f13"
@@ -37,7 +42,10 @@ YTDLP_DOWNLOAD_URL = (
 )
 
 APP_NAME = "yt-dlp-gui"
-APP_VERSION = "1.0.0"
+REPO_OWNER = "cinarcivan"
+REPO_NAME = "yt-dlp-gui"
+LATEST_RELEASE_API = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
+RELEASES_PAGE_URL = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases"
 
 # ─── Translations ─────────────────────────────────────────────────────────────
 STRINGS = {
@@ -65,6 +73,10 @@ STRINGS = {
         "btn_copy_cmd":      "Komutu Kopyala",
         "btn_download":      "  ⬇  İndir",
         "btn_cancel":        "Durdur",
+        "update_checking":   "Kontrol…",
+        "update_downloading": "İndiriliyor…",
+        "update_current":    "v{version}",
+        "update_available":  "Güncelle v{version}",
         "log_label":         "LOG",
         "made_by":           "Made by Çınar Civan",
         "fmt_best":          "Video + Ses (en iyi)",
@@ -88,6 +100,15 @@ STRINGS = {
         "log_not_found":     "yt-dlp çalıştırılamadı. Uygulamayı yeniden başlatmayı deneyin.",
         "log_unexpected":    "Beklenmeyen hata: ",
         "log_stopping":      "Durduruluyor…",
+        "log_update_checking": "Uygulama güncellemeleri kontrol ediliyor…",
+        "log_update_available": "Yeni sürüm bulundu: v{version}",
+        "log_update_none":   "Uygulama güncel.",
+        "log_update_failed": "Güncelleme kontrolü başarısız: ",
+        "log_update_start":  "Güncelleme indiriliyor: {name}",
+        "log_update_done":   "Güncelleme indirildi.",
+        "log_update_download_failed": "Güncelleme indirilemedi: ",
+        "log_update_source": "Kaynak koddan çalışan sürüm doğrudan güncellenemez. Releases sayfası açılıyor.",
+        "log_update_launch_failed": "Güncelleme başlatılamadı: ",
         "dlg_title":         "yt-dlp bulunamadı",
         "dlg_msg":           (
             "yt-dlp otomatik olarak indirilemedi.\n\n"
@@ -96,6 +117,21 @@ STRINGS = {
             "2. yt-dlp.exe dosyasını şu klasöre koyun:\n{path}\n"
             "3. Uygulamayı yeniden başlatın"
         ),
+        "update_title":      "Uygulama güncellemesi",
+        "update_available_msg": (
+            "Yeni sürüm v{version} bulundu.\n\n"
+            "Şimdi indirip kurmak ister misiniz?"
+        ),
+        "update_ready_installer": (
+            "Güncelleme indirildi. Kurulumu başlatmak için uygulama kapanacak.\n\n"
+            "Devam edilsin mi?"
+        ),
+        "update_ready_portable": (
+            "Yeni sürüm indirildi. Uygulama kapanıp güncellenecek ve yeniden açılacak.\n\n"
+            "Devam edilsin mi?"
+        ),
+        "update_no_asset":   "Bu sürüm için uygun Windows güncelleme dosyası bulunamadı.",
+        "update_latest":     "Zaten en güncel sürümü kullanıyorsunuz.",
     },
     "en": {
         "title":             "yt-dlp GUI",
@@ -121,6 +157,10 @@ STRINGS = {
         "btn_copy_cmd":      "Copy Command",
         "btn_download":      "  ⬇  Download",
         "btn_cancel":        "Cancel",
+        "update_checking":   "Checking…",
+        "update_downloading": "Downloading…",
+        "update_current":    "v{version}",
+        "update_available":  "Update v{version}",
         "log_label":         "LOG",
         "made_by":           "Made by Çınar Civan",
         "fmt_best":          "Video + Audio (best)",
@@ -144,6 +184,15 @@ STRINGS = {
         "log_not_found":     "yt-dlp could not be launched. Try restarting the app.",
         "log_unexpected":    "Unexpected error: ",
         "log_stopping":      "Stopping…",
+        "log_update_checking": "Checking for app updates…",
+        "log_update_available": "New version available: v{version}",
+        "log_update_none":   "App is up to date.",
+        "log_update_failed": "Update check failed: ",
+        "log_update_start":  "Downloading update: {name}",
+        "log_update_done":   "Update downloaded.",
+        "log_update_download_failed": "Update download failed: ",
+        "log_update_source": "A source checkout cannot update itself directly. Opening the releases page.",
+        "log_update_launch_failed": "Update could not be started: ",
         "dlg_title":         "yt-dlp not found",
         "dlg_msg":           (
             "yt-dlp could not be downloaded automatically.\n\n"
@@ -152,6 +201,21 @@ STRINGS = {
             "2. Place yt-dlp.exe in this folder:\n{path}\n"
             "3. Restart the application"
         ),
+        "update_title":      "Application update",
+        "update_available_msg": (
+            "A new version v{version} is available.\n\n"
+            "Do you want to download and install it now?"
+        ),
+        "update_ready_installer": (
+            "The update has been downloaded. The application will close and start the installer.\n\n"
+            "Continue?"
+        ),
+        "update_ready_portable": (
+            "The new version has been downloaded. The application will close, update itself, and reopen.\n\n"
+            "Continue?"
+        ),
+        "update_no_asset":   "No compatible Windows update asset was found for this release.",
+        "update_latest":     "You are already using the latest version.",
     },
 }
 # ─────────────────────────────────────────────────────────────────────────────
@@ -189,6 +253,61 @@ def _managed_ytdlp_path() -> str:
     return os.path.join(_ensure_user_data_dir(), "yt-dlp.exe")
 
 
+def _updates_dir() -> str:
+    path = os.path.join(_ensure_user_data_dir(), "updates")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _version_key(version: str):
+    parts = []
+    current = ""
+    for ch in version.strip().lstrip("vV"):
+        if ch.isdigit():
+            current += ch
+            continue
+        if current:
+            parts.append(int(current))
+            current = ""
+        if ch not in ".-_":
+            break
+    if current:
+        parts.append(int(current))
+    return tuple(parts or [0])
+
+
+def _release_asset_kind(name: str):
+    lowered = name.lower()
+    if lowered.startswith("yt-dlp-gui-setup-") and lowered.endswith(".exe"):
+        return "installer"
+    if lowered == "yt-dlp gui.exe":
+        return "portable"
+    if lowered.endswith(".exe"):
+        return "portable"
+    return None
+
+
+def _download_to_path(url: str, destination: str):
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": f"{APP_NAME}/{APP_VERSION}",
+            "Accept": "application/octet-stream",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as response, open(destination, "wb") as target:
+        while True:
+            chunk = response.read(65536)
+            if not chunk:
+                break
+            target.write(chunk)
+
+
+def _spawn_cmd_script(script_path: str):
+    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+    subprocess.Popen(["cmd", "/c", script_path], creationflags=creationflags)
+
+
 def _find_ytdlp():
     for local in (_managed_ytdlp_path(), _bundled_ytdlp_path()):
         if os.path.isfile(local):
@@ -215,9 +334,12 @@ class YtdlpGUI(tk.Tk):
         self._process    = None
         self._running    = False
         self._ytdlp_path = None
+        self._update_state = "idle"
+        self._update_info = None
 
         self._build_ui()
         self._check_ytdlp()
+        self.after(1200, self._start_update_check)
 
     # ── Translation helpers ───────────────────────────────────────────────────
 
@@ -245,6 +367,15 @@ class YtdlpGUI(tk.Tk):
             activeforeground=ACCENT2, relief="flat", cursor="hand2",
             padx=10, pady=3, bd=0, command=self._toggle_language)
         self._lang_btn.pack(side="right", padx=(8, 0))
+
+        self._update_btn = self._btn(
+            header,
+            self.t("update_current").format(version=APP_VERSION),
+            self._handle_update_button,
+            small=True,
+            secondary=True,
+        )
+        self._update_btn.pack(side="right", padx=(0, 8))
 
         self._status_dot = tk.Label(header, text="●", font=("Segoe UI", 12),
                                     bg=BG, fg=TEXT_DIM)
@@ -318,9 +449,31 @@ class YtdlpGUI(tk.Tk):
                         bg=bg_col, fg=fg, activebackground=act,
                         activeforeground=fg, relief="flat", cursor="hand2",
                         font=font, padx=pad[0], pady=pad[1], bd=0)
-        btn.bind("<Enter>", lambda e, b=btn, c=act: b.config(bg=c))
-        btn.bind("<Leave>", lambda e, b=btn, c=bg_col: b.config(bg=c))
+        btn._base_bg = bg_col
+        btn._hover_bg = act
+        btn.bind("<Enter>", self._on_button_enter)
+        btn.bind("<Leave>", self._on_button_leave)
         return btn
+
+    def _on_button_enter(self, event):
+        btn = event.widget
+        if str(btn.cget("state")) != "disabled":
+            btn.config(bg=getattr(btn, "_hover_bg", btn.cget("bg")))
+
+    def _on_button_leave(self, event):
+        btn = event.widget
+        btn.config(bg=getattr(btn, "_base_bg", btn.cget("bg")))
+
+    def _set_button_colors(self, btn, fg, bg_col, act):
+        btn._base_bg = bg_col
+        btn._hover_bg = act
+        btn.config(
+            bg=bg_col,
+            fg=fg,
+            activebackground=act,
+            activeforeground=fg,
+            disabledforeground=TEXT_DIM,
+        )
 
     # ── Sections ─────────────────────────────────────────────────────────────
 
@@ -515,6 +668,7 @@ class YtdlpGUI(tk.Tk):
         self.cmd_btn.config(text=self.t("btn_copy_cmd"))
         self.dl_btn.config(text=self.t("btn_download"))
         self.cancel_btn.config(text=self.t("btn_cancel"))
+        self._refresh_update_button()
 
         # Checkboxes
         self._chk_subs.config(text=self.t("chk_subs"))
@@ -538,6 +692,210 @@ class YtdlpGUI(tk.Tk):
         if color == ERROR:   return self.t("failed")
         if color == ACCENT2: return self.t("downloading_ytdlp")
         return self.t("checking")
+
+    def _prefers_installer_update(self):
+        if not getattr(sys, "frozen", False):
+            return False
+        local_appdata = os.getenv("LOCALAPPDATA")
+        if not local_appdata:
+            return False
+        programs_dir = os.path.normcase(os.path.join(local_appdata, "Programs"))
+        install_dir = os.path.normcase(_app_install_dir())
+        return install_dir.startswith(programs_dir)
+
+    def _pick_release_asset(self, release):
+        assets = release.get("assets") or []
+        installers = []
+        portables = []
+        for asset in assets:
+            kind = _release_asset_kind(asset.get("name", ""))
+            if kind == "installer":
+                installers.append(asset)
+            elif kind == "portable":
+                portables.append(asset)
+
+        if self._prefers_installer_update() and installers:
+            return installers[0], "installer"
+        if portables:
+            return portables[0], "portable"
+        if installers:
+            return installers[0], "installer"
+        return None, None
+
+    def _update_button_text(self):
+        if self._update_state == "checking":
+            return self.t("update_checking")
+        if self._update_state == "downloading":
+            return self.t("update_downloading")
+        if self._update_state == "available" and self._update_info:
+            return self.t("update_available").format(version=self._update_info["version"])
+        return self.t("update_current").format(version=APP_VERSION)
+
+    def _refresh_update_button(self):
+        text = self._update_button_text()
+        state = "disabled" if self._update_state in {"checking", "downloading"} else "normal"
+        self._update_btn.config(text=text, state=state)
+        if self._update_state == "available":
+            self._set_button_colors(self._update_btn, TEXT, ACCENT, "#6a4ce0")
+        else:
+            self._set_button_colors(self._update_btn, TEXT_DIM, SURFACE2, SURFACE)
+
+    def _handle_update_button(self):
+        if self._update_state == "available" and self._update_info:
+            self._prompt_update_download()
+            return
+        self._start_update_check(manual=True)
+
+    def _start_update_check(self, manual=False):
+        if self._update_state in {"checking", "downloading"}:
+            return
+        self._update_state = "checking"
+        self._refresh_update_button()
+        if manual:
+            self._log(self.t("log_update_checking"), "info")
+        threading.Thread(target=self._check_for_updates_worker, args=(manual,), daemon=True).start()
+
+    def _check_for_updates_worker(self, manual=False):
+        try:
+            req = urllib.request.Request(
+                LATEST_RELEASE_API,
+                headers={
+                    "User-Agent": f"{APP_NAME}/{APP_VERSION}",
+                    "Accept": "application/vnd.github+json",
+                },
+            )
+            with urllib.request.urlopen(req, timeout=15) as response:
+                release = json.load(response)
+
+            latest_version = (release.get("tag_name") or release.get("name") or "").strip().lstrip("vV")
+            if latest_version and _version_key(latest_version) > _version_key(APP_VERSION):
+                asset, asset_kind = self._pick_release_asset(release)
+                info = {
+                    "version": latest_version,
+                    "html_url": release.get("html_url") or RELEASES_PAGE_URL,
+                    "asset": asset,
+                    "asset_kind": asset_kind,
+                }
+                self.after(0, self._handle_update_available, info)
+                return
+
+            self.after(0, self._handle_update_current, manual)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                self.after(0, self._handle_update_current, manual)
+                return
+            self.after(0, self._handle_update_error, manual, str(exc))
+        except Exception as exc:
+            self.after(0, self._handle_update_error, manual, str(exc))
+
+    def _handle_update_available(self, info):
+        self._update_info = info
+        self._update_state = "available"
+        self._refresh_update_button()
+        self._log(self.t("log_update_available").format(version=info["version"]), "info")
+        self._prompt_update_download()
+
+    def _handle_update_current(self, manual=False):
+        self._update_info = None
+        self._update_state = "current"
+        self._refresh_update_button()
+        if manual:
+            self._log(self.t("log_update_none"), "ok")
+            messagebox.showinfo(self.t("update_title"), self.t("update_latest"))
+
+    def _handle_update_error(self, manual, error_text):
+        self._update_state = "current"
+        self._refresh_update_button()
+        if manual:
+            self._log(self.t("log_update_failed") + error_text, "err")
+            messagebox.showerror(self.t("update_title"), self.t("log_update_failed") + error_text)
+
+    def _prompt_update_download(self):
+        if not self._update_info:
+            return
+        if not self._update_info.get("asset"):
+            messagebox.showerror(self.t("update_title"), self.t("update_no_asset"))
+            webbrowser.open(self._update_info.get("html_url", RELEASES_PAGE_URL))
+            return
+        if messagebox.askyesno(
+            self.t("update_title"),
+            self.t("update_available_msg").format(version=self._update_info["version"]),
+        ):
+            self._start_update_download()
+
+    def _start_update_download(self):
+        if not self._update_info or self._update_state == "downloading":
+            return
+        if not getattr(sys, "frozen", False):
+            self._log(self.t("log_update_source"), "info")
+            webbrowser.open(self._update_info.get("html_url", RELEASES_PAGE_URL))
+            return
+
+        self._update_state = "downloading"
+        self._refresh_update_button()
+        threading.Thread(target=self._download_update_worker, daemon=True).start()
+
+    def _download_update_worker(self):
+        asset = self._update_info["asset"]
+        file_name = asset.get("name", "update.exe")
+        destination = os.path.join(_updates_dir(), file_name)
+        try:
+            self.after(0, self._log, self.t("log_update_start").format(name=file_name), "info")
+            _download_to_path(asset["browser_download_url"], destination)
+            self.after(0, self._handle_update_downloaded, destination)
+        except Exception as exc:
+            self.after(0, self._handle_update_download_failed, str(exc))
+
+    def _handle_update_downloaded(self, download_path):
+        self._update_state = "available"
+        self._refresh_update_button()
+        self._log(self.t("log_update_done"), "ok")
+
+        asset_kind = self._update_info.get("asset_kind")
+        message_key = "update_ready_installer" if asset_kind == "installer" else "update_ready_portable"
+        if not messagebox.askyesno(self.t("update_title"), self.t(message_key)):
+            return
+
+        try:
+            self._apply_update(download_path, asset_kind)
+        except Exception as exc:
+            self._log(self.t("log_update_launch_failed") + str(exc), "err")
+            messagebox.showerror(self.t("update_title"), self.t("log_update_launch_failed") + str(exc))
+
+    def _handle_update_download_failed(self, error_text):
+        self._update_state = "available" if self._update_info else "current"
+        self._refresh_update_button()
+        self._log(self.t("log_update_download_failed") + error_text, "err")
+        messagebox.showerror(self.t("update_title"), self.t("log_update_download_failed") + error_text)
+
+    def _apply_update(self, download_path, asset_kind):
+        script_dir = tempfile.mkdtemp(prefix="yt-dlp-gui-update-")
+        script_path = os.path.join(script_dir, "apply_update.cmd")
+
+        if asset_kind == "installer":
+            script_body = (
+                "@echo off\r\n"
+                "ping 127.0.0.1 -n 3 > nul\r\n"
+                f'start "" "{download_path}"\r\n'
+            )
+        else:
+            current_exe = sys.executable
+            script_body = (
+                "@echo off\r\n"
+                "ping 127.0.0.1 -n 3 > nul\r\n"
+                f'copy /Y "{download_path}" "{current_exe}" > nul\r\n'
+                "if errorlevel 1 (\r\n"
+                f'    start "" "{download_path}"\r\n'
+                ") else (\r\n"
+                f'    start "" "{current_exe}"\r\n'
+                ")\r\n"
+            )
+
+        with open(script_path, "w", encoding="utf-8", newline="") as script_file:
+            script_file.write(script_body)
+
+        _spawn_cmd_script(script_path)
+        self.destroy()
 
     # ── yt-dlp Detection / Auto-Download ─────────────────────────────────────
 
