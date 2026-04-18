@@ -36,6 +36,9 @@ YTDLP_DOWNLOAD_URL = (
     "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
 )
 
+APP_NAME = "yt-dlp-gui"
+APP_VERSION = "1.0.0"
+
 # ─── Translations ─────────────────────────────────────────────────────────────
 STRINGS = {
     "tr": {
@@ -90,7 +93,7 @@ STRINGS = {
             "yt-dlp otomatik olarak indirilemedi.\n\n"
             "Lütfen şu adımları izleyin:\n"
             "1. https://github.com/yt-dlp/yt-dlp/releases adresine gidin\n"
-            "2. yt-dlp.exe dosyasını bu uygulamanın yanına koyun\n"
+            "2. yt-dlp.exe dosyasını şu klasöre koyun:\n{path}\n"
             "3. Uygulamayı yeniden başlatın"
         ),
     },
@@ -146,7 +149,7 @@ STRINGS = {
             "yt-dlp could not be downloaded automatically.\n\n"
             "Please follow these steps:\n"
             "1. Go to https://github.com/yt-dlp/yt-dlp/releases\n"
-            "2. Place yt-dlp.exe next to this application\n"
+            "2. Place yt-dlp.exe in this folder:\n{path}\n"
             "3. Restart the application"
         ),
     },
@@ -159,20 +162,37 @@ _FMT_AUDIO_EXTS  = {"fmt_audio_mp3": "mp3", "fmt_audio_m4a": "m4a", "fmt_audio_o
 _FMT_VIDEO_KEY   = "fmt_video_only"
 
 
-def _app_dir() -> str:
+def _app_install_dir() -> str:
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
 
 
-def _ytdlp_local_path() -> str:
-    return os.path.join(_app_dir(), "yt-dlp.exe")
+def _user_data_dir() -> str:
+    local_appdata = os.getenv("LOCALAPPDATA")
+    if local_appdata:
+        return os.path.join(local_appdata, APP_NAME)
+    return _app_install_dir()
+
+
+def _ensure_user_data_dir() -> str:
+    path = _user_data_dir()
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _bundled_ytdlp_path() -> str:
+    return os.path.join(_app_install_dir(), "yt-dlp.exe")
+
+
+def _managed_ytdlp_path() -> str:
+    return os.path.join(_ensure_user_data_dir(), "yt-dlp.exe")
 
 
 def _find_ytdlp():
-    local = _ytdlp_local_path()
-    if os.path.isfile(local):
-        return local
+    for local in (_managed_ytdlp_path(), _bundled_ytdlp_path()):
+        if os.path.isfile(local):
+            return local
     return shutil.which("yt-dlp")
 
 
@@ -184,6 +204,8 @@ class YtdlpGUI(tk.Tk):
         self._fmt_key = "fmt_best" # tracks selected format by key
         self._qual_raw = None      # tracks quality (None = "best")
         self._cont_raw = None      # tracks container (None = "auto")
+
+        self.title(self.t("title"))
 
         self.geometry("800x720")
         self.minsize(680, 600)
@@ -543,7 +565,7 @@ class YtdlpGUI(tk.Tk):
         self._status_label.config(text=self.t("downloading_ytdlp"), fg=ACCENT2)
 
     def _download_ytdlp(self):
-        dest = _ytdlp_local_path()
+        dest = _managed_ytdlp_path()
         self.after(0, self._log, self.t("log_auto_dl"), "info")
         try:
             tmp = dest + ".tmp"
@@ -561,7 +583,10 @@ class YtdlpGUI(tk.Tk):
             self.after(0, self._set_status, False)
 
     def _show_manual_install_hint(self):
-        messagebox.showerror(self.t("dlg_title"), self.t("dlg_msg"))
+        messagebox.showerror(
+            self.t("dlg_title"),
+            self.t("dlg_msg").format(path=_managed_ytdlp_path()),
+        )
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
